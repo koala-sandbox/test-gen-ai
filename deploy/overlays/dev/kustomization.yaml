@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+configMapGenerator:
+- behavior: merge
+  envs:
+  - .env
+  name: test-gen-ai-configmap
+kind: Kustomization
+namePrefix: dev-
+namespace: dev
+patches:
+- path: ingress-patch.yaml
+  target:
+    kind: Ingress
+resources:
+- ../../base
+- namespace.yaml
