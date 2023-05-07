@@ -16,7 +16,7 @@ spec:
             name: test-gen-ai-service
             port:
               number: 80
-        path: /
+        path: /foo/[A-Z0-9]{3}
         pathType: Prefix
   tls:
   - hosts:
