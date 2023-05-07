@@ -1,0 +1,92 @@
+# This workflow will deploy a kustomize overlay to a kubernetes cluster.
+
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      overlay:
+        description: 'The overlay to use for kustomize'
+        required: true 
+        type: string 
+      tag:
+        description: 'The image tag to deploy'
+        required: true 
+        type: string 
+      cluster_name:
+        description: 'The cluster name'
+        required: true 
+        type: string 
+      cluster_zone:
+        description: 'The cluster zone'
+        required: true 
+        type: string 
+  workflow_call:
+    inputs:
+      overlay:
+        description: 'The overlay to use for kustomize'
+        required: true 
+        type: string 
+      tag:
+        description: 'The image tag to deploy'
+        required: true 
+        type: string 
+      cluster_name:
+        description: 'The cluster name'
+        required: true 
+        type: string 
+      cluster_zone:
+        description: 'The cluster zone'
+        required: true 
+        type: string 
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      NAME: "test-gen-ai"
+      IMAGE: "me-west1-docker.pkg.dev/koala-ops-demo-373407/koala-repo/test-gen-ai"
+      DEPLOYMENT_FILE: deploy/base/deployment.yaml
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Print inputs
+      run: |
+        echo "Deploy workflow received input, overlay: ${{ inputs.overlay }}, tag: ${{ inputs.tag }}, cluster_name: ${{ inputs.cluster_name }}, cluster_zone: ${{ inputs.cluster_zone }}"
+
+    # Authenticate via credentials json
+    - id: 'auth'
+      uses: 'google-github-actions/auth@v0'
+      with:
+        credentials_json: '${{ secrets.GCP_CREDENTIALS }}'
+    
+    # Get the GKE credentials so we can deploy to the cluster
+    - name: Set up GKE credentials
+      uses: google-github-actions/get-gke-credentials@v0
+      with:
+        cluster_name: ${{ inputs.cluster_name }}
+        location: ${{ inputs.cluster_zone }}
+
+
+    # Replace IMAGE_TAG with input TAG
+    - name: Replace IMAGE_TAG with input TAG
+      run: |
+          EXISTING_TAG=$(cat $DEPLOYMENT_FILE | grep $IMAGE |  cut -d ":" -f 3)
+          sed -i "s|$IMAGE:$EXISTING_TAG|$IMAGE:${{ inputs.tag }}|g" $DEPLOYMENT_FILE
+          cat $DEPLOYMENT_FILE
+    
+    # Verify input overlay exists in repo
+    - name: Verify input overlay exists in repo
+      uses: andstor/file-existence-action@v2
+      with:
+        files: deploy/overlays/${{ inputs.overlay }}/kustomization.yaml
+
+    
+    # Deploy the Docker image to the GKE cluster
+    - name: Deploy
+      run: |-
+        NAMESPACE=$(cat deploy/overlays/${{ inputs.overlay }}/namespace.yaml | grep name: | cut -d ":" -f 2)
+        echo "NAMESPACE: $NAMESPACE"
+        kubectl kustomize deploy/overlays/${{ inputs.overlay }} | kubectl apply -f -
+        kubectl wait --timeout=120s --for=condition=ready pod -l app=$NAME -n $NAMESPACE
+        kubectl get services -n $NAMESPACE
